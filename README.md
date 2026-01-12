@@ -1,4 +1,4 @@
-# SAPN Prometheus Scraper
+# SA Power Networks Exporter
 
 A Docker-based service that scrapes electricity interval data from the SA Power Networks customer portal and exposes it as Prometheus metrics.
 
@@ -53,7 +53,7 @@ Add the following scrape config to your `prometheus.yml`:
 scrape_configs:
   - job_name: 'sapn'
     static_configs:
-      - targets: ['sapn-scraper:9120']
+      - targets: ['sapowernetworks-exporter:9120']
     scrape_interval: 5m
 ```
 

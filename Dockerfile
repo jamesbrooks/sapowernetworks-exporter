@@ -1,4 +1,4 @@
-# Dockerfile for SAPN Prometheus Scraper
+# Dockerfile for SA Power Networks Exporter
 FROM python:3.11-slim
 
 # Set working directory

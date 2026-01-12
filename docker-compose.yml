@@ -1,7 +1,8 @@
-# Docker Compose configuration for SAPN Prometheus Scraper
+# Docker Compose configuration for SA Power Networks Exporter
 services:
-  sapn-scraper:
+  sapowernetworks-exporter:
     build: .
+    image: jamesbrooks/sapowernetworks-exporter
     ports:
       - "9120:9120"
     env_file:
