@@ -12,7 +12,9 @@ NEM12 format (simplified for SAPN):
 """
 
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import List, Optional
+from zoneinfo import ZoneInfo
 
 
 @dataclass
@@ -256,6 +258,38 @@ def interval_to_time(interval: int) -> str:
     hours = minutes // 60
     mins = minutes % 60
     return f"{hours:02d}:{mins:02d}"
+
+
+def interval_to_epoch(date: str, interval: int, tz_name: str = "Australia/Adelaide") -> int:
+    """Convert date and interval to Unix epoch timestamp.
+
+    The timestamp represents the START of the 5-minute interval.
+    The date/interval are interpreted in the specified timezone, then
+    converted to UTC epoch.
+
+    Args:
+        date: Date in YYYYMMDD format
+        interval: Interval number (0-287)
+        tz_name: Timezone name (default: Australia/Adelaide for SAPN data)
+
+    Returns:
+        Unix epoch timestamp (seconds since 1970-01-01 00:00:00 UTC)
+
+    Example:
+        >>> interval_to_epoch("20260105", 0, "Australia/Adelaide")
+        1767534600  # 2026-01-05 00:00 Adelaide = 2026-01-04 13:30 UTC (ACDT)
+    """
+    year = int(date[0:4])
+    month = int(date[4:6])
+    day = int(date[6:8])
+
+    minutes = interval * 5
+    hours = minutes // 60
+    mins = minutes % 60
+
+    tz = ZoneInfo(tz_name)
+    dt = datetime(year, month, day, hours, mins, 0, tzinfo=tz)
+    return int(dt.timestamp())
 
 
 if __name__ == "__main__":

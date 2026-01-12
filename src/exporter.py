@@ -13,9 +13,9 @@ from typing import Optional, Set, Tuple
 from prometheus_client import Gauge, start_http_server, REGISTRY, CollectorRegistry
 
 try:
-    from src.nem12_parser import NEM12Data, IntervalReading, get_daily_total, get_latest_date, get_dates
+    from src.nem12_parser import NEM12Data, IntervalReading, get_daily_total, get_latest_date, get_dates, interval_to_epoch
 except ImportError:
-    from nem12_parser import NEM12Data, IntervalReading, get_daily_total, get_latest_date, get_dates
+    from nem12_parser import NEM12Data, IntervalReading, get_daily_total, get_latest_date, get_dates, interval_to_epoch
 
 # Configure module logger
 logger = logging.getLogger(__name__)
@@ -59,7 +59,7 @@ class SAPNExporter:
         self._electricity_kwh = Gauge(
             'sapn_electricity_kwh',
             'Electricity consumption in kWh for a 5-minute interval',
-            ['nmi', 'date', 'interval'],
+            ['nmi', 'date', 'interval', 'epoch'],
             registry=self._registry
         )
 
@@ -99,7 +99,7 @@ class SAPNExporter:
         )
 
         # Track which label combinations we've set (for cleanup)
-        self._active_interval_labels: Set[Tuple[str, str, str]] = set()
+        self._active_interval_labels: Set[Tuple[str, str, str, str]] = set()
         self._active_daily_labels: Set[Tuple[str, str]] = set()
         self._active_nmi_labels: Set[Tuple[str]] = set()
 
@@ -146,11 +146,13 @@ class SAPNExporter:
         # Update interval readings for recent days
         for reading in readings:
             if reading.date in recent_dates:
-                labels = (nmi, reading.date, str(reading.interval))
+                epoch = str(interval_to_epoch(reading.date, reading.interval))
+                labels = (nmi, reading.date, str(reading.interval), epoch)
                 self._electricity_kwh.labels(
                     nmi=nmi,
                     date=reading.date,
-                    interval=str(reading.interval)
+                    interval=str(reading.interval),
+                    epoch=epoch
                 ).set(reading.value)
                 self._active_interval_labels.add(labels)
 
