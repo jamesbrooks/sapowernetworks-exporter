@@ -9,6 +9,7 @@ This module handles:
 import logging
 import os
 import sys
+import time
 from typing import Optional
 
 from apscheduler.schedulers.blocking import BlockingScheduler
@@ -103,6 +104,7 @@ def run_scrape() -> bool:
     global exporter
 
     logger.info("Starting scheduled scrape")
+    start_time = time.time()
 
     try:
         # Create scraper and authenticate
@@ -128,7 +130,7 @@ def run_scrape() -> bool:
         # Update metrics
         if exporter:
             exporter.update_metrics(data)
-            exporter.set_scrape_success(True)
+            exporter.set_scrape_success(True, time.time() - start_time)
 
         logger.info("Scrape completed successfully")
         return True
@@ -136,19 +138,19 @@ def run_scrape() -> bool:
     except SAPNError as e:
         logger.error(f"Scrape failed (SAPN error): {e}")
         if exporter:
-            exporter.set_scrape_success(False)
+            exporter.set_scrape_success(False, time.time() - start_time)
         return False
 
     except NEM12ParseError as e:
         logger.error(f"Scrape failed (parse error): {e}")
         if exporter:
-            exporter.set_scrape_success(False)
+            exporter.set_scrape_success(False, time.time() - start_time)
         return False
 
     except Exception as e:
         logger.error(f"Scrape failed (unexpected error): {e}")
         if exporter:
-            exporter.set_scrape_success(False)
+            exporter.set_scrape_success(False, time.time() - start_time)
         return False
 
 
@@ -187,7 +189,7 @@ def main() -> int:
 
     # Initialize exporter
     exporter = SAPNExporter(port=config["exporter_port"])
-    exporter.start_server()
+    exporter.start()
     logger.info(f"Prometheus metrics available at http://localhost:{config['exporter_port']}/metrics")
 
     # Create scheduler
