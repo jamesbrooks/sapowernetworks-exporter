@@ -1,12 +1,12 @@
 # SA Power Networks Exporter
 
-Scrapes electricity interval data from the SA Power Networks customer portal and stores it in InfluxDB for visualization in Grafana.
+Scrapes electricity interval data from the SA Power Networks customer portal and stores it in InfluxDB.
 
 ## Features
 
 - Automated login to SAPN customer portal
 - Parses NEM12 interval meter data (5-minute granularity, 288 readings/day)
-- Stores data in InfluxDB with correct timestamps for time-series graphing
+- Stores data in InfluxDB with correct timestamps
 - Daily scheduled scraping
 
 ## Quick Start
@@ -27,56 +27,7 @@ openssl rand -hex 32
 docker compose up -d
 ```
 
-4. Access services:
-   - **Grafana**: http://localhost:3000 (admin/admin)
-   - **InfluxDB**: http://localhost:8086 (admin/adminpassword)
-
-## Grafana Setup
-
-1. Open Grafana at http://localhost:3000
-2. Go to **Connections** > **Data sources** > **Add data source**
-3. Select **InfluxDB**
-4. Configure:
-   - **Query Language**: Flux
-   - **URL**: http://influxdb:8086
-   - **Organization**: sapn
-   - **Token**: your INFLUXDB_TOKEN
-   - **Default Bucket**: electricity
-5. Click **Save & Test**
-
-### Example Queries
-
-**5-minute interval data (last 7 days):**
-```flux
-from(bucket: "electricity")
-  |> range(start: -7d)
-  |> filter(fn: (r) => r._measurement == "sapn_electricity")
-  |> filter(fn: (r) => r._field == "kwh")
-```
-
-**Hourly averages:**
-```flux
-from(bucket: "electricity")
-  |> range(start: -7d)
-  |> filter(fn: (r) => r._measurement == "sapn_electricity")
-  |> filter(fn: (r) => r._field == "kwh")
-  |> aggregateWindow(every: 1h, fn: mean, createEmpty: false)
-```
-
-**Daily totals:**
-```flux
-from(bucket: "electricity")
-  |> range(start: -30d)
-  |> filter(fn: (r) => r._measurement == "sapn_daily_total")
-  |> filter(fn: (r) => r._field == "kwh")
-```
-
-**Scrape status:**
-```flux
-from(bucket: "electricity")
-  |> range(start: -7d)
-  |> filter(fn: (r) => r._measurement == "sapn_scrape")
-```
+4. Access InfluxDB at http://localhost:8086 (admin/adminpassword)
 
 ## Environment Variables
 
@@ -98,6 +49,24 @@ from(bucket: "electricity")
 | `sapn_electricity` | nmi | kwh | 5-minute interval readings |
 | `sapn_daily_total` | nmi | kwh | Daily totals |
 | `sapn_scrape` | nmi | success, duration_seconds, readings_count | Scrape status |
+
+## Example Flux Queries
+
+**5-minute interval data:**
+```flux
+from(bucket: "electricity")
+  |> range(start: -7d)
+  |> filter(fn: (r) => r._measurement == "sapn_electricity")
+  |> filter(fn: (r) => r._field == "kwh")
+```
+
+**Daily totals:**
+```flux
+from(bucket: "electricity")
+  |> range(start: -30d)
+  |> filter(fn: (r) => r._measurement == "sapn_daily_total")
+  |> filter(fn: (r) => r._field == "kwh")
+```
 
 ## Development
 
