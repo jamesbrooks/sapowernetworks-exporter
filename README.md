@@ -24,6 +24,22 @@ docker compose up -d
 
 3. Access metrics at `http://localhost:9120/metrics`
 
+## Docker Compose
+
+```yaml
+services:
+  sapowernetworks-exporter:
+    image: jamesbrooks/sapowernetworks-exporter
+    ports:
+      - "9120:9120"
+    environment:
+      - SAPN_USERNAME=your@email.com
+      - SAPN_PASSWORD=yourpassword
+      - SAPN_NMI=your_nmi
+      - SCRAPE_HOUR=4
+    restart: unless-stopped
+```
+
 ## Environment Variables
 
 | Variable | Required | Default | Description |
