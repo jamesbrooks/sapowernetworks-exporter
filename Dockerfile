@@ -13,8 +13,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy source code
 COPY src/ ./src/
 
-# Expose Prometheus metrics port
-EXPOSE 9120
-
 # Run the application
 CMD ["python", "-m", "src.main"]

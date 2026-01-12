@@ -11,15 +11,52 @@ Scrapes electricity interval data from the SA Power Networks customer portal and
 
 ## Quick Start
 
-1. Create your environment file:
+1. Generate a token for InfluxDB authentication:
 ```bash
-cp .env.example .env
+openssl rand -hex 32
 ```
 
-2. Edit `.env` with your credentials:
-```bash
-# Generate a token for InfluxDB
-openssl rand -hex 32
+2. Create a `docker-compose.yml` with your credentials:
+```yaml
+services:
+  sapowernetworks-exporter:
+    image: jamesbrooks/sapowernetworks-exporter
+    environment:
+      - SAPN_USERNAME=your-email@example.com
+      - SAPN_PASSWORD=your-sapn-password
+      - SAPN_NMI=your-nmi-number
+      - INFLUXDB_URL=http://influxdb:8086
+      - INFLUXDB_TOKEN=your-generated-token-here
+      - INFLUXDB_ORG=sapn
+      - INFLUXDB_BUCKET=electricity
+      - SCRAPE_HOUR=4
+    depends_on:
+      influxdb:
+        condition: service_healthy
+    restart: unless-stopped
+
+  influxdb:
+    image: influxdb:2.7
+    ports:
+      - "8086:8086"
+    volumes:
+      - influxdb-data:/var/lib/influxdb2
+    environment:
+      - DOCKER_INFLUXDB_INIT_MODE=setup
+      - DOCKER_INFLUXDB_INIT_USERNAME=admin
+      - DOCKER_INFLUXDB_INIT_PASSWORD=adminpassword
+      - DOCKER_INFLUXDB_INIT_ORG=sapn
+      - DOCKER_INFLUXDB_INIT_BUCKET=electricity
+      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=your-generated-token-here
+    healthcheck:
+      test: ["CMD", "influx", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  influxdb-data:
 ```
 
 3. Start the stack:
@@ -36,7 +73,7 @@ docker compose up -d
 | `SAPN_USERNAME` | Yes | - | SAPN portal email |
 | `SAPN_PASSWORD` | Yes | - | SAPN portal password |
 | `SAPN_NMI` | Yes | - | National Meter Identifier |
-| `INFLUXDB_TOKEN` | Yes | - | InfluxDB API token |
+| `INFLUXDB_TOKEN` | Yes | - | InfluxDB API token (must match `DOCKER_INFLUXDB_INIT_ADMIN_TOKEN` on InfluxDB) |
 | `INFLUXDB_URL` | No | `http://localhost:8086` | InfluxDB URL |
 | `INFLUXDB_ORG` | No | `sapn` | InfluxDB organization |
 | `INFLUXDB_BUCKET` | No | `electricity` | InfluxDB bucket |
