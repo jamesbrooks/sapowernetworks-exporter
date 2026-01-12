@@ -1,94 +1,75 @@
 # SA Power Networks Exporter
 
-A Docker-based service that scrapes electricity interval data from the SA Power Networks customer portal and exposes it as Prometheus metrics.
+Scrapes electricity interval data from the SA Power Networks customer portal and stores it in InfluxDB.
 
 ## Features
 
-- **Authentication**: Automated login to SAPN customer portal (Salesforce Visualforce)
-- **NEM12 Parsing**: Parses NEM12 interval meter data (5-minute granularity, 288 readings/day)
-- **Prometheus Metrics**: Exposes consumption data with labels for NMI, date, and interval
-- **Scheduled Scraping**: Daily automated data collection via APScheduler
+- Automated login to SAPN customer portal
+- Parses NEM12 interval meter data (5-minute granularity, 288 readings/day)
+- Stores data in InfluxDB with correct timestamps
+- Daily scheduled scraping
 
 ## Quick Start
 
-1. Clone the repository and create your environment file:
+1. Create your environment file:
 ```bash
 cp .env.example .env
-# Edit .env with your SAPN credentials
 ```
 
-2. Run with Docker Compose:
+2. Edit `.env` with your credentials:
+```bash
+# Generate a token for InfluxDB
+openssl rand -hex 32
+```
+
+3. Start the stack:
 ```bash
 docker compose up -d
 ```
 
-3. Access metrics at `http://localhost:9120/metrics`
-
-## Docker Compose
-
-```yaml
-services:
-  sapowernetworks-exporter:
-    image: jamesbrooks/sapowernetworks-exporter
-    ports:
-      - "9120:9120"
-    environment:
-      - SAPN_USERNAME=your@email.com
-      - SAPN_PASSWORD=yourpassword
-      - SAPN_NMI=your_nmi
-      - SCRAPE_HOUR=4
-    restart: unless-stopped
-```
+4. Access InfluxDB at http://localhost:8086 (admin/adminpassword)
 
 ## Environment Variables
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `SAPN_USERNAME` | Yes | - | SAPN portal email address |
+| `SAPN_USERNAME` | Yes | - | SAPN portal email |
 | `SAPN_PASSWORD` | Yes | - | SAPN portal password |
 | `SAPN_NMI` | Yes | - | National Meter Identifier |
-| `SCRAPE_HOUR` | No | `4` | Hour of day (0-23) for daily scrape |
-| `EXPORTER_PORT` | No | `9120` | Port for Prometheus metrics endpoint |
+| `INFLUXDB_TOKEN` | Yes | - | InfluxDB API token |
+| `INFLUXDB_URL` | No | `http://localhost:8086` | InfluxDB URL |
+| `INFLUXDB_ORG` | No | `sapn` | InfluxDB organization |
+| `INFLUXDB_BUCKET` | No | `electricity` | InfluxDB bucket |
+| `SCRAPE_HOUR` | No | `4` | Hour (0-23) for daily scrape |
 
-## Prometheus Metrics
+## InfluxDB Measurements
 
-| Metric | Type | Labels | Description |
-|--------|------|--------|-------------|
-| `sapn_electricity_kwh` | Gauge | nmi, date, interval | Per-interval consumption (kWh) |
-| `sapn_electricity_daily_total_kwh` | Gauge | nmi, date | Daily total consumption (kWh) |
-| `sapn_last_reading_date` | Gauge | nmi | Most recent reading date (YYYYMMDD) |
-| `sapn_scrape_success` | Gauge | - | Last scrape status (1=success, 0=failure) |
-| `sapn_scrape_timestamp` | Gauge | - | Unix timestamp of last scrape |
-| `sapn_scrape_duration_seconds` | Gauge | - | Duration of last scrape operation |
+| Measurement | Tags | Fields | Description |
+|-------------|------|--------|-------------|
+| `sapn_electricity` | nmi | kwh | 5-minute interval readings |
+| `sapn_daily_total` | nmi | kwh | Daily totals |
+| `sapn_scrape` | nmi | success, duration_seconds, readings_count | Scrape status |
 
-## Prometheus Configuration
+## Example Flux Queries
 
-Add the following scrape config to your `prometheus.yml`:
-
-```yaml
-scrape_configs:
-  - job_name: 'sapn'
-    static_configs:
-      - targets: ['sapowernetworks-exporter:9120']
-    scrape_interval: 5m
+**5-minute interval data:**
+```flux
+from(bucket: "electricity")
+  |> range(start: -7d)
+  |> filter(fn: (r) => r._measurement == "sapn_electricity")
+  |> filter(fn: (r) => r._field == "kwh")
 ```
 
-## Example Queries
-
-```promql
-# Daily electricity consumption
-sapn_electricity_daily_total_kwh{nmi="YOUR_NMI"}
-
-# Average consumption per interval for today
-avg(sapn_electricity_kwh{date="20260112"})
-
-# Check if last scrape succeeded
-sapn_scrape_success == 1
+**Daily totals:**
+```flux
+from(bucket: "electricity")
+  |> range(start: -30d)
+  |> filter(fn: (r) => r._measurement == "sapn_daily_total")
+  |> filter(fn: (r) => r._field == "kwh")
 ```
 
 ## Development
 
-Run locally without Docker:
 ```bash
 pip install -r requirements.txt
 python -m src.main

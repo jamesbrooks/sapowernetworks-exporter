@@ -1,11 +1,11 @@
-# SAPN Prometheus Scraper dependencies
+# SAPN Exporter dependencies
 
 # HTTP requests and web scraping
 requests==2.31.0
 beautifulsoup4==4.12.3
 
-# Prometheus metrics
-prometheus_client==0.19.0
+# InfluxDB for time-series data storage
+influxdb-client==1.38.0
 
 # Task scheduling
 APScheduler==3.10.4
