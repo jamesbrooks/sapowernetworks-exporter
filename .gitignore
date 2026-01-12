@@ -1,6 +1,9 @@
 # Environment files with secrets
 .env
 
+# Project context file (may contain personal information)
+CLAUDE.md
+
 # Python
 __pycache__/
 *.py[cod]
