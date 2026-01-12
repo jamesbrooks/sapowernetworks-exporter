@@ -1,12 +1,10 @@
-# Docker Compose configuration for SA Power Networks Exporter
-# Includes InfluxDB for time-series storage and Grafana for visualization
+# Docker Compose for SA Power Networks Exporter
+# Complete stack: Exporter + InfluxDB + Grafana
 
 services:
   sapowernetworks-exporter:
     build: .
     image: jamesbrooks/sapowernetworks-exporter
-    ports:
-      - "9120:9120"
     env_file:
       - .env
     environment:
@@ -22,7 +20,6 @@ services:
       - "8086:8086"
     volumes:
       - influxdb-data:/var/lib/influxdb2
-      - influxdb-config:/etc/influxdb2
     environment:
       - DOCKER_INFLUXDB_INIT_MODE=setup
       - DOCKER_INFLUXDB_INIT_USERNAME=admin
@@ -51,5 +48,4 @@ services:
 
 volumes:
   influxdb-data:
-  influxdb-config:
   grafana-data:

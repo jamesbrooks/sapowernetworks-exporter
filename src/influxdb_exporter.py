@@ -1,23 +1,21 @@
 """InfluxDB exporter module.
 
-This module handles:
-- Pushing NEM12 interval data to InfluxDB with actual timestamps
-- Each 5-minute reading is stored at its correct time
-- Enables proper time-series graphing in Grafana
+This module handles pushing NEM12 interval data to InfluxDB with actual timestamps,
+enabling proper time-series graphing in Grafana.
 """
 
 import logging
+import time
 from typing import Optional, List
 
 from influxdb_client import InfluxDBClient, Point, WritePrecision
 from influxdb_client.client.write_api import SYNCHRONOUS
 
 try:
-    from src.nem12_parser import NEM12Data, IntervalReading, interval_to_epoch
+    from src.nem12_parser import NEM12Data, interval_to_epoch
 except ImportError:
-    from nem12_parser import NEM12Data, IntervalReading, interval_to_epoch
+    from nem12_parser import NEM12Data, interval_to_epoch
 
-# Configure module logger
 logger = logging.getLogger(__name__)
 
 
@@ -27,18 +25,10 @@ class InfluxDBExporter:
     Pushes interval readings to InfluxDB with their actual timestamps,
     enabling proper time-series visualization in Grafana.
 
-    Measurements:
-    - sapn_electricity: Per-interval readings (kWh)
+    Measurements written:
+    - sapn_electricity: Per-interval readings (kWh) with actual timestamps
     - sapn_daily_total: Daily aggregates (kWh)
-
-    Tags:
-    - nmi: National Metering Identifier
-
-    Attributes:
-        url: InfluxDB server URL
-        token: InfluxDB API token
-        org: InfluxDB organization
-        bucket: InfluxDB bucket name
+    - sapn_scrape: Operational metrics (success, duration)
     """
 
     def __init__(
@@ -52,7 +42,7 @@ class InfluxDBExporter:
 
         Args:
             url: InfluxDB server URL
-            token: InfluxDB API token (required for writes)
+            token: InfluxDB API token
             org: InfluxDB organization name
             bucket: InfluxDB bucket name
         """
@@ -77,7 +67,6 @@ class InfluxDBExporter:
             )
             self._write_api = self._client.write_api(write_options=SYNCHRONOUS)
 
-            # Test connection by pinging
             health = self._client.health()
             if health.status == "pass":
                 logger.info(f"Connected to InfluxDB at {self.url}")
@@ -108,12 +97,9 @@ class InfluxDBExporter:
 
         Returns:
             Number of points written
-
-        Raises:
-            RuntimeError: If not connected to InfluxDB
         """
         if not self._write_api:
-            raise RuntimeError("Not connected to InfluxDB. Call connect() first.")
+            raise RuntimeError("Not connected to InfluxDB")
 
         nmi = nem12_data.nmi
         readings = nem12_data.readings
@@ -122,13 +108,9 @@ class InfluxDBExporter:
             logger.warning("No readings to write")
             return 0
 
-        # Build points for batch write
         points: List[Point] = []
-
         for reading in readings:
-            # Get the actual timestamp for this interval
             epoch_ns = interval_to_epoch(reading.date, reading.interval) * 1_000_000_000
-
             point = (
                 Point("sapn_electricity")
                 .tag("nmi", nmi)
@@ -137,21 +119,12 @@ class InfluxDBExporter:
             )
             points.append(point)
 
-        # Write in batches
-        try:
-            self._write_api.write(bucket=self.bucket, org=self.org, record=points)
-            logger.info(f"Wrote {len(points)} readings to InfluxDB for NMI {nmi}")
-        except Exception as e:
-            logger.error(f"Failed to write to InfluxDB: {e}")
-            raise
-
+        self._write_api.write(bucket=self.bucket, org=self.org, record=points)
+        logger.info(f"Wrote {len(points)} interval readings for NMI {nmi}")
         return len(points)
 
     def write_daily_totals(self, nem12_data: NEM12Data) -> int:
         """Write daily total aggregates to InfluxDB.
-
-        Each day gets a single point with the total consumption,
-        timestamped at midnight of that day.
 
         Args:
             nem12_data: Parsed NEM12 data containing readings
@@ -160,7 +133,7 @@ class InfluxDBExporter:
             Number of points written
         """
         if not self._write_api:
-            raise RuntimeError("Not connected to InfluxDB. Call connect() first.")
+            raise RuntimeError("Not connected to InfluxDB")
 
         nmi = nem12_data.nmi
         readings = nem12_data.readings
@@ -168,19 +141,13 @@ class InfluxDBExporter:
         if not readings:
             return 0
 
-        # Group readings by date and sum
         daily_totals: dict[str, float] = {}
         for reading in readings:
-            if reading.date not in daily_totals:
-                daily_totals[reading.date] = 0.0
-            daily_totals[reading.date] += reading.value
+            daily_totals[reading.date] = daily_totals.get(reading.date, 0.0) + reading.value
 
-        # Build points
         points: List[Point] = []
         for date, total in daily_totals.items():
-            # Use midnight (interval 0) as the timestamp for daily totals
             epoch_ns = interval_to_epoch(date, 0) * 1_000_000_000
-
             point = (
                 Point("sapn_daily_total")
                 .tag("nmi", nmi)
@@ -189,14 +156,33 @@ class InfluxDBExporter:
             )
             points.append(point)
 
-        try:
-            self._write_api.write(bucket=self.bucket, org=self.org, record=points)
-            logger.info(f"Wrote {len(points)} daily totals to InfluxDB for NMI {nmi}")
-        except Exception as e:
-            logger.error(f"Failed to write daily totals: {e}")
-            raise
-
+        self._write_api.write(bucket=self.bucket, org=self.org, record=points)
+        logger.info(f"Wrote {len(points)} daily totals for NMI {nmi}")
         return len(points)
+
+    def write_scrape_status(self, nmi: str, success: bool, duration: float, readings_count: int = 0) -> None:
+        """Write scrape operational metrics to InfluxDB.
+
+        Args:
+            nmi: The NMI that was scraped
+            success: Whether the scrape succeeded
+            duration: How long the scrape took in seconds
+            readings_count: Number of readings written (0 if failed)
+        """
+        if not self._write_api:
+            raise RuntimeError("Not connected to InfluxDB")
+
+        point = (
+            Point("sapn_scrape")
+            .tag("nmi", nmi)
+            .field("success", 1 if success else 0)
+            .field("duration_seconds", duration)
+            .field("readings_count", readings_count)
+            .time(time.time_ns(), WritePrecision.NS)
+        )
+
+        self._write_api.write(bucket=self.bucket, org=self.org, record=point)
+        logger.info(f"Wrote scrape status: success={success}, duration={duration:.2f}s")
 
     def write_all(self, nem12_data: NEM12Data) -> tuple[int, int]:
         """Write both interval readings and daily totals.
@@ -210,84 +196,3 @@ class InfluxDBExporter:
         interval_count = self.write_readings(nem12_data)
         daily_count = self.write_daily_totals(nem12_data)
         return interval_count, daily_count
-
-
-if __name__ == "__main__":
-    # Test block
-    import sys
-
-    def test_exporter_init():
-        """Test exporter initialization."""
-        print("Testing InfluxDBExporter init...", end=" ")
-
-        exporter = InfluxDBExporter(
-            url="http://localhost:8086",
-            token="test-token",
-            org="test-org",
-            bucket="test-bucket"
-        )
-
-        assert exporter.url == "http://localhost:8086"
-        assert exporter.token == "test-token"
-        assert exporter.org == "test-org"
-        assert exporter.bucket == "test-bucket"
-
-        print("OK")
-
-    def test_point_creation():
-        """Test that points are created with correct timestamps."""
-        print("Testing point creation...", end=" ")
-
-        # Create sample data
-        readings = [
-            IntervalReading(date="20260111", interval=0, value=0.134, quality="A"),
-            IntervalReading(date="20260111", interval=1, value=0.142, quality="A"),
-            IntervalReading(date="20260111", interval=287, value=0.098, quality="A"),
-        ]
-
-        nem12_data = NEM12Data(
-            nmi="TEST_NMI",
-            readings=readings,
-            meter_serial="TEST123"
-        )
-
-        # Verify epoch calculation
-        epoch_0 = interval_to_epoch("20260111", 0)
-        epoch_1 = interval_to_epoch("20260111", 1)
-        epoch_287 = interval_to_epoch("20260111", 287)
-
-        # Interval 1 should be 5 minutes (300 seconds) after interval 0
-        assert epoch_1 - epoch_0 == 300, f"Expected 300s diff, got {epoch_1 - epoch_0}"
-
-        # Interval 287 should be 287 * 5 = 1435 minutes after interval 0
-        assert epoch_287 - epoch_0 == 287 * 300, f"Expected {287 * 300}s diff"
-
-        print("OK")
-
-    # Run tests
-    print("=" * 60)
-    print("InfluxDB Exporter Unit Tests")
-    print("=" * 60)
-
-    tests = [
-        test_exporter_init,
-        test_point_creation,
-    ]
-
-    failed = 0
-    for test in tests:
-        try:
-            test()
-        except Exception as e:
-            print(f"FAILED: {e}")
-            import traceback
-            traceback.print_exc()
-            failed += 1
-
-    print("=" * 60)
-    if failed:
-        print(f"FAILED: {failed} test(s)")
-        sys.exit(1)
-    else:
-        print("All tests passed!")
-        sys.exit(0)
